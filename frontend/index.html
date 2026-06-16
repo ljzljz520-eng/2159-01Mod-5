@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>C语言 烟花动画</title>
+    <title>C语言 烟花动画 - 录制回放</title>
     <style>
         body, html {
             margin: 0;
@@ -15,34 +15,440 @@
             display: flex;
             justify-content: center;
             align-items: center;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         }
         canvas {
             display: block;
             outline: none;
         }
+
+        .control-panel {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 10px 16px;
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+
+        .control-panel button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .btn-record {
+            background: #e74c3c;
+            color: white;
+        }
+        .btn-record:hover {
+            background: #c0392b;
+        }
+        .btn-record.recording {
+            animation: pulse 1.5s infinite;
+        }
+
+        .btn-stop {
+            background: #95a5a6;
+            color: white;
+        }
+        .btn-stop:hover {
+            background: #7f8c8d;
+        }
+
+        .btn-play {
+            background: #2ecc71;
+            color: white;
+        }
+        .btn-play:hover {
+            background: #27ae60;
+        }
+        .btn-play:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+
+        .btn-download {
+            background: #3498db;
+            color: white;
+        }
+        .btn-download:hover {
+            background: #2980b9;
+        }
+        .btn-download:disabled {
+            background: #555;
+            cursor: not-allowed;
+        }
+
+        .btn-load {
+            background: #9b59b6;
+            color: white;
+        }
+        .btn-load:hover {
+            background: #8e44ad;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        .status-bar {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 13px;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 8px 16px;
+            border-radius: 8px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            z-index: 100;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .status-bar .mode {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+        .mode-idle { background: #555; }
+        .mode-recording { background: #e74c3c; }
+        .mode-playing { background: #2ecc71; color: #000; }
+
+        .size-warning {
+            position: fixed;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(243, 156, 18, 0.9);
+            color: #000;
+            padding: 12px 20px;
+            border-radius: 8px;
+            font-size: 13px;
+            max-width: 500px;
+            text-align: center;
+            z-index: 100;
+            display: none;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+
+        .size-warning.show {
+            display: block;
+            animation: slideDown 0.3s ease-out;
+        }
+
+        @keyframes slideDown {
+            from { transform: translate(-50%, -20px); opacity: 0; }
+            to { transform: translate(-50%, 0); opacity: 1; }
+        }
+
+        .size-warning strong {
+            display: block;
+            margin-bottom: 4px;
+            font-size: 14px;
+        }
+
+        .size-warning ul {
+            margin: 6px 0 0 0;
+            padding-left: 20px;
+            text-align: left;
+            font-size: 12px;
+        }
+
+        .size-warning li {
+            margin: 2px 0;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        .info-panel {
+            position: fixed;
+            bottom: 60px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 11px;
+            z-index: 100;
+            font-family: monospace;
+        }
     </style>
 </head>
 <body>
     <canvas id="canvas" oncontextmenu="event.preventDefault()"></canvas>
+
+    <div class="control-panel">
+        <button id="btnRecord" class="btn-record">● 开始录制</button>
+        <button id="btnStop" class="btn-stop" disabled>■ 停止</button>
+        <button id="btnPlay" class="btn-play" disabled>▶ 回放</button>
+        <button id="btnDownload" class="btn-download" disabled>⬇ 下载</button>
+        <button id="btnLoad" class="btn-load">📂 加载</button>
+        <input type="file" id="fileInput" accept=".json">
+    </div>
+
+    <div class="size-warning" id="sizeWarning">
+        <strong>⚠ 窗口尺寸不同</strong>
+        <span id="sizeDiffText">录制尺寸与当前尺寸不一致</span>
+        <ul>
+            <li>烟花水平位置会按比例缩放，边缘位置可能偏移</li>
+            <li>爆炸高度会随窗口高度变化</li>
+            <li>发射速度已按比例调整，但轨迹可能略有不同</li>
+        </ul>
+    </div>
+
+    <div class="status-bar" id="statusBar">
+        <span class="mode mode-idle" id="modeLabel">空闲</span>
+        <span id="frameInfo">帧: 0</span>
+        <span id="eventInfo">事件: 0</span>
+        <span id="sizeInfo">尺寸: 0×0</span>
+    </div>
+
+    <div class="info-panel" id="infoPanel"></div>
+
     <script>
         var Module = {
             canvas: (function() {
                 var canvas = document.getElementById('canvas');
-                // Make canvas full screen
                 canvas.width = window.innerWidth;
                 canvas.height = window.innerHeight;
                 return canvas;
             })(),
             onRuntimeInitialized: function() {
                 console.log("烟花C模块已加载");
+                initControls();
+                updateStatus();
             }
         };
-        
-        window.addEventListener('resize', function() {
-            var canvas = document.getElementById('canvas');
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        });
+
+        var recordedData = null;
+        var isRecording = false;
+        var isPlaying = false;
+        var statusInterval = null;
+
+        function initControls() {
+            var btnRecord = document.getElementById('btnRecord');
+            var btnStop = document.getElementById('btnStop');
+            var btnPlay = document.getElementById('btnPlay');
+            var btnDownload = document.getElementById('btnDownload');
+            var btnLoad = document.getElementById('btnLoad');
+            var fileInput = document.getElementById('fileInput');
+
+            btnRecord.addEventListener('click', function() {
+                if (!isRecording) {
+                    startRecording();
+                }
+            });
+
+            btnStop.addEventListener('click', function() {
+                stopRecordingOrPlayback();
+            });
+
+            btnPlay.addEventListener('click', function() {
+                if (recordedData) {
+                    startPlayback();
+                }
+            });
+
+            btnDownload.addEventListener('click', function() {
+                downloadRecording();
+            });
+
+            btnLoad.addEventListener('click', function() {
+                fileInput.click();
+            });
+
+            fileInput.addEventListener('change', function(e) {
+                var file = e.target.files[0];
+                if (file) {
+                    var reader = new FileReader();
+                    reader.onload = function(evt) {
+                        try {
+                            var data = JSON.parse(evt.target.result);
+                            recordedData = evt.target.result;
+                            console.log("加载录制文件:", data);
+                            document.getElementById('btnPlay').disabled = false;
+                            document.getElementById('btnDownload').disabled = false;
+                            checkSizeDiff(data.width, data.height);
+                        } catch (err) {
+                            alert("文件格式错误: " + err.message);
+                        }
+                    };
+                    reader.readAsText(file);
+                }
+            });
+
+            window.addEventListener('resize', function() {
+                var canvas = document.getElementById('canvas');
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                if (recordedData) {
+                    try {
+                        var data = JSON.parse(recordedData);
+                        checkSizeDiff(data.width, data.height);
+                    } catch(e) {}
+                }
+                updateSizeInfo();
+            });
+
+            statusInterval = setInterval(updateStatus, 200);
+        }
+
+        function startRecording() {
+            Module._start_recording();
+            isRecording = true;
+            isPlaying = false;
+            recordedData = null;
+
+            var btnRecord = document.getElementById('btnRecord');
+            btnRecord.classList.add('recording');
+            btnRecord.textContent = '● 录制中...';
+            document.getElementById('btnStop').disabled = false;
+            document.getElementById('btnPlay').disabled = true;
+            document.getElementById('btnDownload').disabled = true;
+            document.getElementById('sizeWarning').classList.remove('show');
+        }
+
+        function stopRecordingOrPlayback() {
+            if (isRecording) {
+                Module._stop_recording();
+                saveRecordedData();
+            } else if (isPlaying) {
+                Module._reset_performance();
+                isPlaying = false;
+            }
+
+            isRecording = false;
+
+            var btnRecord = document.getElementById('btnRecord');
+            btnRecord.classList.remove('recording');
+            btnRecord.textContent = '● 开始录制';
+            document.getElementById('btnStop').disabled = true;
+        }
+
+        function saveRecordedData() {
+            var bufSize = 1024 * 1024;
+            var bufPtr = Module._malloc(bufSize);
+            var len = Module._get_recorded_data(bufPtr, bufSize);
+            var dataStr = Module.UTF8ToString(bufPtr, len);
+            Module._free(bufPtr);
+
+            recordedData = dataStr;
+            var data = JSON.parse(dataStr);
+
+            console.log("录制完成:", data.event_count, "个事件");
+
+            document.getElementById('btnPlay').disabled = false;
+            document.getElementById('btnDownload').disabled = false;
+
+            checkSizeDiff(data.width, data.height);
+        }
+
+        function startPlayback() {
+            if (!recordedData) return;
+
+            var data = JSON.parse(recordedData);
+            var jsonStr = JSON.stringify(data);
+
+            var strPtr = Module._malloc(jsonStr.length + 1);
+            Module.stringToUTF8(jsonStr, strPtr, jsonStr.length + 1);
+            var result = Module._start_playback(strPtr);
+            Module._free(strPtr);
+
+            if (result) {
+                isPlaying = true;
+                isRecording = false;
+                document.getElementById('btnStop').disabled = false;
+                console.log("回放开始");
+
+                checkSizeDiff(data.width, data.height);
+            } else {
+                alert("回放启动失败");
+            }
+        }
+
+        function checkSizeDiff(recordedW, recordedH) {
+            var currentW = window.innerWidth;
+            var currentH = window.innerHeight;
+            var warning = document.getElementById('sizeWarning');
+            var diffText = document.getElementById('sizeDiffText');
+
+            if (Math.abs(recordedW - currentW) > 10 || Math.abs(recordedH - currentH) > 10) {
+                var scaleW = (currentW / recordedW * 100).toFixed(1);
+                var scaleH = (currentH / recordedH * 100).toFixed(1);
+                diffText.textContent = '录制尺寸 ' + recordedW + '×' + recordedH +
+                    ' → 当前 ' + currentW + '×' + currentH +
+                    ' (缩放: ' + scaleW + '% × ' + scaleH + '%)';
+                warning.classList.add('show');
+            } else {
+                warning.classList.remove('show');
+            }
+        }
+
+        function downloadRecording() {
+            if (!recordedData) return;
+
+            var blob = new Blob([recordedData], { type: 'application/json' });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement('a');
+            a.href = url;
+
+            var data = JSON.parse(recordedData);
+            var timestamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+            a.download = 'fireworks-' + timestamp + '.json';
+
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function updateStatus() {
+            var mode = Module._get_mode();
+            var frame = Module._get_frame();
+            var events = Module._get_recorded_event_count();
+
+            var modeLabel = document.getElementById('modeLabel');
+            if (mode === 0) {
+                modeLabel.textContent = '空闲';
+                modeLabel.className = 'mode mode-idle';
+            } else if (mode === 1) {
+                modeLabel.textContent = '录制中';
+                modeLabel.className = 'mode mode-recording';
+            } else if (mode === 2) {
+                modeLabel.textContent = '回放中';
+                modeLabel.className = 'mode mode-playing';
+            }
+
+            document.getElementById('frameInfo').textContent = '帧: ' + frame;
+            document.getElementById('eventInfo').textContent = '事件: ' + events;
+
+            if (mode === 2 && !isPlaying) {
+                isPlaying = false;
+                document.getElementById('btnStop').disabled = true;
+            }
+        }
+
+        function updateSizeInfo() {
+            document.getElementById('sizeInfo').textContent =
+                '尺寸: ' + window.innerWidth + '×' + window.innerHeight;
+        }
+        updateSizeInfo();
     </script>
     <script src="fireworks.js"></script>
 </body>
